@@ -22,12 +22,21 @@ export const TILE_BASE = 3;
 
 // 坦克与子弹
 export const TANK_SIZE = 28;
+export const TANK_OFFSET = (TILE - TANK_SIZE) / 2; // 坦克在格内居中的偏移（2px）
 export const PLAYER_SPEED = 80;
 export const ENEMY_SPEED = 56;
 export const PLAYER_FIRE_COOLDOWN = 0.4;
 export const ENEMY_FIRE_COOLDOWN = 1.2;
+export const PLAYER_BULLET_LIMIT = 1;  // 同屏己方子弹上限
+export const ENEMY_BULLET_LIMIT = 1;
 export const BULLET_SIZE = 6;
 export const BULLET_SPEED = 240;
+
+// 出生点（瓦片坐标）
+export const PLAYER_SPAWN_COL = 4;
+export const PLAYER_SPAWN_ROW = 12;
+export const ENEMY_SPAWN_COLS = [0, 6, 12];
+export const ENEMY_SPAWN_ROW = 0;
 
 // 游戏规则
 export const PLAYER_MAX_LIVES = 3;
