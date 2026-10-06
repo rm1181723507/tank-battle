@@ -2,12 +2,14 @@ import {
   CANVAS_WIDTH, CANVAS_HEIGHT, HUD_HEIGHT, COLORS,
   TILE, GRID, TANK_SIZE, TANK_OFFSET,
   PLAYER_SPAWN_COL, PLAYER_SPAWN_ROW, PLAYER_BULLET_LIMIT, PLAYER_FIRE_COOLDOWN,
+  PLAYER_MAX_LIVES,
   MAX_ENEMIES_ON_SCREEN, ENEMIES_PER_LEVEL, ENEMY_SPAWN_COLS, ENEMY_SPAWN_ROW,
   ENEMY_SPAWN_INTERVAL, RESPAWN_INVINCIBLE,
   DIR_UP, DIR_RIGHT, DIR_DOWN, DIR_LEFT, DIR_DX, DIR_DY
 } from './constants.js';
 import { GameMap, TOTAL_LEVELS } from './map.js';
 import { PlayerTank, EnemyTank } from './tank.js';
+import { EffectManager } from './effects.js';
 
 // 游戏主体：持有全部状态，每帧被 main.js 调用 update + render。
 // 纯逻辑（不触碰 DOM），可在 Node 下测试。
@@ -15,7 +17,7 @@ export class Game {
   constructor(rng = Math.random) {
     this.rng = rng; // 可注入随机源，便于测试
     this.levelIndex = 0;
-    this.lives = 3;
+    this.lives = PLAYER_MAX_LIVES;
     this.startLevel();
   }
 
@@ -27,10 +29,29 @@ export class Game {
     );
     this.enemies = [];
     this.bullets = [];
+    this.effects = new EffectManager();
     this.enemiesRemaining = ENEMIES_PER_LEVEL; // 本关待出生的敌人总数
     this.spawnTimer = 1.0;                     // 距下次出生尝试的秒数
     this.spawnIndex = 0;                       // 轮换出生点
+    this.baseAlive = true;
     this.state = 'playing'; // playing | levelClear | gameOver | victory
+  }
+
+  // Enter 键流转：关卡完成→下一关/胜利；失败/通关→重新开始
+  handleEnter(input) {
+    if (!input || !input.consumePress || !input.consumePress('enter')) return;
+    if (this.state === 'levelClear') {
+      if (this.levelIndex + 1 < TOTAL_LEVELS) {
+        this.levelIndex++;
+        this.startLevel();
+      } else {
+        this.state = 'victory';
+      }
+    } else if (this.state === 'victory' || this.state === 'gameOver') {
+      this.levelIndex = 0;
+      this.lives = PLAYER_MAX_LIVES;
+      this.startLevel();
+    }
   }
 
   // 全部坦克（用于坦克间碰撞）
@@ -115,6 +136,7 @@ export class Game {
   killPlayer() {
     this.player.alive = false;
     this.lives--;
+    this.effects.addExplosion(this.player.centerX, this.player.centerY);
     if (this.lives <= 0) {
       this.state = 'gameOver';
       return;
@@ -125,6 +147,13 @@ export class Game {
       PLAYER_SPAWN_ROW * TILE + TANK_OFFSET
     );
     this.player.invincible = RESPAWN_INVINCIBLE;
+  }
+
+  destroyBase() {
+    this.baseAlive = false;
+    const base = this.map.findBase();
+    this.effects.addExplosion(base.col * TILE + TILE / 2, base.row * TILE + TILE / 2, true);
+    this.state = 'gameOver';
   }
 
   // 子弹与坦克的命中判定
@@ -140,6 +169,7 @@ export class Game {
               rb.y < re.y + re.h && rb.y + rb.h > re.y) {
             b.alive = false;
             e.alive = false;
+            this.effects.addExplosion(e.centerX, e.centerY);
             break;
           }
         }
@@ -180,9 +210,17 @@ export class Game {
         b.alive = false;
         continue;
       }
-      // 命中地形：砖块被摧毁，钢/基地/边界仅挡住子弹（基地判定在状态流转中处理）
+      // 命中地形：砖块被摧毁；钢/边界仅挡住子弹；基地被击中即失败
       const hit = this.map.hitBullet(b.x, b.y);
-      if (hit) b.alive = false;
+      if (hit === 'base') {
+        b.alive = false;
+        this.destroyBase();
+        return;
+      }
+      if (hit) {
+        b.alive = false;
+        this.effects.addSpark(b.x, b.y);
+      }
     }
     // 敌我子弹相撞，同归于尽
     for (let i = 0; i < this.bullets.length; i++) {
@@ -196,6 +234,7 @@ export class Game {
             ra.y < rb.y + rb.h && ra.y + ra.h > rb.y) {
           a.alive = false;
           b.alive = false;
+          this.effects.addSpark(a.x, a.y);
         }
       }
     }
@@ -203,7 +242,11 @@ export class Game {
   }
 
   update(dt, input) {
-    if (this.state !== 'playing') return;
+    if (this.state !== 'playing') {
+      this.effects.update(dt);
+      this.handleEnter(input);
+      return;
+    }
     this.updatePlayer(dt, input);
     this.updateSpawning(dt);
     this.updateEnemies(dt);
@@ -211,7 +254,44 @@ export class Game {
     this.handleBulletTankCollisions();
     this.bullets = this.bullets.filter(b => b.alive);
     this.enemies = this.enemies.filter(e => e.alive);
+    this.effects.update(dt);
     this.checkVictory();
+  }
+
+  renderHud(ctx) {
+    ctx.fillStyle = COLORS.text;
+    ctx.font = '16px monospace';
+    ctx.textBaseline = 'middle';
+    const y = HUD_HEIGHT / 2;
+    ctx.fillText(`关卡 ${this.levelIndex + 1}`, 12, y);
+    ctx.fillText(`敌人 ${this.enemiesRemaining + this.enemies.length}`, 110, y);
+    ctx.fillText(`生命 ${this.lives}`, 230, y);
+  }
+
+  renderOverlay(ctx) {
+    if (this.state === 'playing') return;
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+    ctx.fillRect(0, HUD_HEIGHT, CANVAS_WIDTH, CANVAS_HEIGHT - HUD_HEIGHT);
+    ctx.fillStyle = COLORS.text;
+    ctx.font = '24px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const cx = CANVAS_WIDTH / 2;
+    const cy = HUD_HEIGHT + (CANVAS_HEIGHT - HUD_HEIGHT) / 2;
+    if (this.state === 'levelClear') {
+      ctx.fillText('关卡完成！', cx, cy - 20);
+      ctx.font = '16px monospace';
+      ctx.fillText('按 Enter 进入下一关', cx, cy + 16);
+    } else if (this.state === 'victory') {
+      ctx.fillText('胜利！', cx, cy - 20);
+      ctx.font = '16px monospace';
+      ctx.fillText('按 Enter 重新开始', cx, cy + 16);
+    } else {
+      ctx.fillText('游戏结束', cx, cy - 20);
+      ctx.font = '16px monospace';
+      ctx.fillText('按 Enter 重新开始', cx, cy + 16);
+    }
+    ctx.textAlign = 'left';
   }
 
   render(ctx) {
@@ -220,6 +300,7 @@ export class Game {
     ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
     ctx.fillStyle = COLORS.brickDark;
     ctx.fillRect(0, 0, CANVAS_WIDTH, HUD_HEIGHT);
+    this.renderHud(ctx);
     // 地图与实体
     ctx.save();
     ctx.translate(0, HUD_HEIGHT);
@@ -227,6 +308,8 @@ export class Game {
     this.player.render(ctx);
     for (const e of this.enemies) e.render(ctx);
     for (const b of this.bullets) b.render(ctx);
+    this.effects.render(ctx);
     ctx.restore();
+    this.renderOverlay(ctx);
   }
 }
