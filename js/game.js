@@ -1,10 +1,13 @@
-import { CANVAS_WIDTH, CANVAS_HEIGHT, COLORS } from './constants.js';
+import { CANVAS_WIDTH, CANVAS_HEIGHT, HUD_HEIGHT, COLORS } from './constants.js';
+import { GameMap, TOTAL_LEVELS } from './map.js';
 
 // 游戏主体：持有全部状态，每帧被 main.js 调用 update + render。
 // 纯逻辑（不触碰 DOM），可在 Node 下测试。
 export class Game {
   constructor() {
+    this.levelIndex = 0;
     this.state = 'playing'; // playing | levelClear | gameOver | victory
+    this.map = new GameMap(this.levelIndex);
   }
 
   update(dt, input) {
@@ -17,5 +20,10 @@ export class Game {
     ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
     ctx.fillStyle = COLORS.brickDark;
     ctx.fillRect(0, 0, CANVAS_WIDTH, HUD_HEIGHT);
+    // 地图
+    ctx.save();
+    ctx.translate(0, HUD_HEIGHT);
+    this.map.render(ctx);
+    ctx.restore();
   }
 }
