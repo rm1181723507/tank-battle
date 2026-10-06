@@ -1,6 +1,6 @@
 import {
   CANVAS_WIDTH, CANVAS_HEIGHT, HUD_HEIGHT, COLORS,
-  TILE, TANK_SIZE, TANK_OFFSET,
+  TILE, GRID, TANK_SIZE, TANK_OFFSET,
   PLAYER_SPAWN_COL, PLAYER_SPAWN_ROW, PLAYER_BULLET_LIMIT, PLAYER_FIRE_COOLDOWN,
   DIR_UP, DIR_RIGHT, DIR_DOWN, DIR_LEFT, DIR_DX, DIR_DY
 } from './constants.js';
@@ -84,9 +84,41 @@ export class Game {
     }
   }
 
+  updateBullets(dt) {
+    for (const b of this.bullets) {
+      if (!b.alive) continue;
+      b.update(dt);
+      // 飞出地图边界
+      if (b.x < 0 || b.y < 0 || b.x > TILE * GRID || b.y > TILE * GRID) {
+        b.alive = false;
+        continue;
+      }
+      // 命中地形：砖块被摧毁，钢/基地/边界仅挡住子弹（基地判定在状态流转中处理）
+      const hit = this.map.hitBullet(b.x, b.y);
+      if (hit) b.alive = false;
+    }
+    // 敌我子弹相撞，同归于尽
+    for (let i = 0; i < this.bullets.length; i++) {
+      const a = this.bullets[i];
+      if (!a.alive) continue;
+      for (let j = i + 1; j < this.bullets.length; j++) {
+        const b = this.bullets[j];
+        if (!b.alive || a.owner === b.owner) continue;
+        const ra = a.rect(), rb = b.rect();
+        if (ra.x < rb.x + rb.w && ra.x + ra.w > rb.x &&
+            ra.y < rb.y + rb.h && ra.y + ra.h > rb.y) {
+          a.alive = false;
+          b.alive = false;
+        }
+      }
+    }
+    this.bullets = this.bullets.filter(b => b.alive);
+  }
+
   update(dt, input) {
     if (this.state !== 'playing') return;
     this.updatePlayer(dt, input);
+    this.updateBullets(dt);
   }
 
   render(ctx) {
