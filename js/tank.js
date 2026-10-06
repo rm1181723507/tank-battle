@@ -1,5 +1,7 @@
 import {
-  TANK_SIZE, PLAYER_SPEED, DIR_DX, DIR_DY, COLORS
+  TANK_SIZE, PLAYER_SPEED, ENEMY_SPEED, ENEMY_FIRE_COOLDOWN, ENEMY_BULLET_LIMIT,
+  DIR_UP, DIR_RIGHT, DIR_DOWN, DIR_LEFT, DIR_DX, DIR_DY,
+  TILE, COLORS
 } from './constants.js';
 import { Bullet } from './bullet.js';
 
@@ -104,5 +106,97 @@ export class PlayerTank extends Tank {
   render(ctx) {
     if (this.invincible > 0 && Math.floor(this.invincible * 10) % 2 === 0) return; // 无敌闪烁
     super.render(ctx, COLORS.player, COLORS.playerDark);
+  }
+}
+
+// 沿 dir 方向从坦克中心发射直线，检查 dist 路径上（不含目标格）是否有实心瓦片
+function pathClear(map, x, y, dir, dist) {
+  const steps = Math.ceil(dist / TILE);
+  for (let s = 1; s < steps; s++) {
+    const px = x + DIR_DX[dir] * s * TILE;
+    const py = y + DIR_DY[dir] * s * TILE;
+    if (map.isSolid(map.tileAt(Math.floor(px / TILE), Math.floor(py / TILE)))) {
+      return false;
+    }
+  }
+  return true;
+}
+
+export class EnemyTank extends Tank {
+  constructor(x, y, rng = Math.random) {
+    super(x, y, DIR_DOWN, ENEMY_SPEED, 'enemy');
+    this.rng = rng;                 // 可注入，便于测试
+    this.turnTimer = 1 + rng() * 2; // 距下次主动换向的秒数
+    this.fireTimer = 0.5 + rng();   // 距下次尝试开火的秒数
+  }
+
+  update(dt, game) {
+    this.updateCooldown(dt);
+
+    // 移动：撞墙或换向计时到点则重新选向
+    this.turnTimer -= dt;
+    const moved = this.tryMove(
+      DIR_DX[this.dir] * this.speed * dt,
+      DIR_DY[this.dir] * this.speed * dt,
+      game.map, game.allTanks()
+    );
+    if (this.turnTimer <= 0 || !moved) {
+      this.pickDirection(game);
+      this.turnTimer = 1 + this.rng() * 2;
+    }
+
+    // 开火：与玩家同行/列且有清晰弹道时朝玩家开火，否则小概率随机开火
+    this.fireTimer -= dt;
+    if (this.fireTimer <= 0) {
+      this.fireTimer = ENEMY_FIRE_COOLDOWN * (0.7 + this.rng() * 0.6);
+      const shotDir = this.clearShotDir(game);
+      if (shotDir >= 0) {
+        this.dir = shotDir;
+        this.tryFire(game);
+      } else if (this.rng() < 0.35) {
+        this.tryFire(game);
+      }
+    }
+  }
+
+  tryFire(game) {
+    if (this.canFire() && game.countBullets(this.owner) < ENEMY_BULLET_LIMIT) {
+      game.bullets.push(this.makeBullet());
+    }
+  }
+
+  // 偏好朝向玩家：一半概率直接瞄准，一半概率随机
+  pickDirection(game) {
+    const p = game.player;
+    if (p.alive && this.rng() < 0.5) {
+      const dx = p.centerX - this.centerX;
+      const dy = p.centerY - this.centerY;
+      this.dir = Math.abs(dx) > Math.abs(dy)
+        ? (dx > 0 ? DIR_RIGHT : DIR_LEFT)
+        : (dy > 0 ? DIR_DOWN : DIR_UP);
+    } else {
+      this.dir = Math.floor(this.rng() * 4);
+    }
+  }
+
+  // 若与玩家同行/列且弹道无实心瓦片阻挡，返回应朝向的方向，否则 -1
+  clearShotDir(game) {
+    const p = game.player;
+    if (!p.alive) return -1;
+    const dx = p.centerX - this.centerX;
+    const dy = p.centerY - this.centerY;
+    if (Math.abs(dx) <= 8 && Math.abs(dy) > TANK_SIZE &&
+        pathClear(game.map, this.centerX, this.centerY, dy > 0 ? DIR_DOWN : DIR_UP, Math.abs(dy))) {
+      return dy > 0 ? DIR_DOWN : DIR_UP;
+    }
+    if (Math.abs(dy) <= 8 && Math.abs(dx) > TANK_SIZE &&
+        pathClear(game.map, this.centerX, this.centerY, dx > 0 ? DIR_RIGHT : DIR_LEFT, Math.abs(dx))) {
+      return dx > 0 ? DIR_RIGHT : DIR_LEFT;
+    }
+    return -1;
+  }
+
+  render(ctx) {
+    super.render(ctx, COLORS.enemy, COLORS.enemyDark);
   }
 }
