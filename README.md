@@ -26,9 +26,11 @@
 ## 开发
 
 ```powershell
+npm run build   # 修改 js/ 源码后重新生成 dist/tank-battle.js（必须）
 npm test        # 运行单元测试（Node 内置测试器，零依赖）
 ```
 
 - 游戏逻辑与渲染分离：`js/` 下除 `main.js` 外均为纯逻辑模块，可在 Node 下直接测试。
+- 浏览器加载的是 `dist/tank-battle.js`（由 `scripts/build.js` 从 `js/*.js` 打包生成的经典脚本）：Chrome 在 `file://` 协议下会拦截 ES Module 的跨文件加载，直接双击 `index.html` 无法运行 ES Module 版本。修改源码后请先 `npm run build`，测试会校验产物与源码同步。
 - 设计文档见 [PRODUCT_DESIGN.md](PRODUCT_DESIGN.md) 与 [TECH_DESIGN.md](TECH_DESIGN.md)。
 - 协作规范见 [AGENTS.md](AGENTS.md)：每次改动一个 commit，测试全部通过后才交付。

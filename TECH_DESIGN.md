@@ -26,12 +26,12 @@
 
 ```
 D:\tank-battle\
-├── index.html          # 入口页面：<canvas> 元素，加载 js/main.js
+├── index.html          # 入口页面：<canvas> 元素，加载 dist/tank-battle.js
 ├── style.css           # 页面样式：画布居中、深色背景、字体
 ├── PRODUCT_DESIGN.md   # 产品设计文档
 ├── TECH_DESIGN.md      # 本文档
 ├── AGENTS.md           # 协作规范（commit 与测试要求）
-├── js/
+├── js/                 # 源码（ES Module，供 Node 测试与打包）
 │   ├── main.js         # 引导代码：创建 Game 实例、requestAnimationFrame 主循环
 │   ├── game.js         # Game 类：游戏状态机（进行中/胜利/失败）、碰撞调度、关卡加载
 │   ├── map.js          # 地图：13×13 网格数据、瓦片类型、砖块损毁、内置关卡布局
@@ -40,10 +40,16 @@ D:\tank-battle\
 │   ├── effects.js      # 爆炸 / 命中特效（纯色块动画）
 │   ├── input.js        # 键盘输入状态收集
 │   └── constants.js    # 常量：尺寸、速度、颜色、瓦片类型枚举
+├── scripts/
+│   └── build.js        # 零依赖打包器：将 js/*.js 拼接为经典脚本 dist/tank-battle.js
+├── dist/
+│   └── tank-battle.js  # 生成产物（勿手改）；Chrome 在 file:// 下无法加载 ES Module
 └── tests/
     ├── map.test.js     # 地图加载、砖块摧毁、越界处理
     ├── bullet.test.js  # 子弹移动、命中砖/钢/坦克/基地
     ├── tank.test.js    # 移动受阻、开火冷却、敌人被摧毁
+    ├── enemy.test.js   # 敌人出生调度、AI 开火、玩家受伤/无敌
+    ├── bundle.test.js  # dist 产物与源码同步校验
     └── game.test.js    # 胜利 / 失败 / 重生状态流转
 ```
 
